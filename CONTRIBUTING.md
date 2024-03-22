@@ -1,7 +1,4 @@
-Describe in this file:
-
-- team organization, roles, communication
-- the rules to be respected by your future contributors
+Thales
 
 # Contributing guidelines
 
