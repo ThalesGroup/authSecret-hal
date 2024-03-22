@@ -27,8 +27,8 @@
 #include <android-base/properties.h>
 
 
-uint8_t IAR_APPLET_AID[] = {0xA0, 0x00, 0x00, 0x00, 0x18, 0x43, 0x43, 0x43, 0x43, 0x43, 0x42, 0x41, 0x01};
-uint8_t AID_SIZE = 13;
+uint8_t IAR_APPLET_AID[] = {0xA0, 0x00, 0x00, 0x08, 0x44, 0x53, 0xF1, 0x28, 0x70, 0x03, 0x01, 0x00};
+uint8_t AID_SIZE = 12;
 
 std::string const ESE_READER_PREFIX = "eSE";
 constexpr const char omapiServiceName[] =
@@ -109,6 +109,9 @@ bool OmapiTransport::initialize() {
         eSEReader = nullptr;
         return false;
     }
+    
+    channel = nullptr;
+    session = nullptr;
 
     return true;
 }
@@ -136,7 +139,7 @@ bool OmapiTransport::internalTransmitApdu(
         res = session->isClosed(&result);
         if (!res.isOk()) {
             LOG(ERROR) << "isClosed error: " << res.getMessage();
-            return KM_ERROR_SECURE_HW_COMMUNICATION_FAILED;
+            return false;
         }
     }
     if(result) {
@@ -156,7 +159,7 @@ bool OmapiTransport::internalTransmitApdu(
         res = channel->isClosed(&result);
         if (!res.isOk()) {
             LOG(ERROR) << "isClosed error: " << res.getMessage();
-            return KM_ERROR_SECURE_HW_COMMUNICATION_FAILED;
+            return false;
         }
     }
 
@@ -220,7 +223,7 @@ bool OmapiTransport::openConnection() {
 
     // if already conection setup done, no need to initialise it again.
     if (isConnected()) {
-        return KM_ERROR_OK;
+        return false;
     }
     return initialize();
 }
@@ -231,7 +234,7 @@ bool OmapiTransport::sendData(const vector<uint8_t>& inData, vector<uint8_t>& ou
         // Try to initialize connection to eSE
         LOG(INFO) << "Failed to send data, try to initialize connection SE connection";
         auto res = initialize();
-        if (res != KM_ERROR_OK) {
+        if (!res) {
             LOG(ERROR) << "Failed to send data, initialization not completed";
             closeConnection();
             return res;
