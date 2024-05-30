@@ -33,37 +33,6 @@ namespace android {
 namespace hardware {
 namespace authsecret {
 
-
-void
-dump_bytes(const char *pf, char sep, const uint8_t *p, int n, FILE *out)
-{
-    const uint8_t *s = p;
-    char *msg;
-    int len = 0;
-    int input_len = n;
-
-
-    msg = (char*) malloc ( (pf ? strlen(pf) : 0) + input_len * 3 + 1);
-    if(!msg) {
-        errno = ENOMEM;
-        return;
-    }
-
-    if (pf) {
-        len += sprintf(msg , "%s" , pf);
-    }
-    while (input_len--) {
-        len += sprintf(msg + len, "%02X" , *s++);
-        if (input_len && sep) {
-            len += sprintf(msg + len, ":");
-        }
-    }
-    sprintf(msg + len, "\n");
-    ALOGD("SecureElement:%s ==> size = %d data = %s", __func__, n, msg);
-
-    if(msg) free(msg);
-}
-
 bool AuthSecret::constructApduMessage(uint8_t ins, const std::vector<uint8_t>& inputData, std::vector<uint8_t>& apduOut) {
 
     apduOut.push_back(static_cast<uint8_t>(APDU_CLS));  // CLS
@@ -126,11 +95,9 @@ bool AuthSecret::constructApduMessage(uint8_t ins, const std::vector<uint8_t>& i
     // status.
     if (response.size() < 2){
         ALOGE("Response of the sendData is wrong: response size = %d",response.size());
-        return ndk::ScopedAStatus::fromExceptionCodeWithMessage(EX_SERVICE_SPECIFIC, "Response of the sendData is wrong. Less than 2 bytes.");
+        return ndk::ScopedAStatus::ok();
     } else if (getApduStatus(response) != APDU_RESP_STATUS_OK) {
         ALOGE("Response of the sendData is wrong: apdu status = %ld",getApduStatus(response));
-        sprintf(logmsg, "Response of the sendData is wrong: apdu status = %ld",getApduStatus(response));
-        auto ret = ndk::ScopedAStatus::fromExceptionCodeWithMessage(EX_SERVICE_SPECIFIC, logmsg);
         return ndk::ScopedAStatus::ok();
     }
 
