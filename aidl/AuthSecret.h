@@ -42,6 +42,7 @@ struct AuthSecret : public BnAuthSecret {
         return (SW0 << 8 | SW1);
     }
 
+    bool clearFlag();
     // Methods from ::android::hardware::authsecret::IAuthSecret follow.
     ::ndk::ScopedAStatus setPrimaryUserCredential(const std::vector<uint8_t>& in_secret) override;
     

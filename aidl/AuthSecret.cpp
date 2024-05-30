@@ -22,8 +22,14 @@
 #include <android-base/properties.h>
 #include <inttypes.h>
 
+#ifdef ENABLE_CLEAR_FLAG_TIMEOUT
+#include "SessionTimer.h"
+#endif
+
+
 #define APDU_CLS 0x80
 #define INS_SET_AUTH_SECRET 0x54
+#define INS_CLEAR_AUTH_SECRET 0x56
 #define APDU_P1 0x00
 #define APDU_P2 0x00
 #define APDU_RESP_STATUS_OK 0x9000
@@ -34,35 +40,12 @@ namespace hardware {
 namespace authsecret {
 
 
-void
-dump_bytes(const char *pf, char sep, const uint8_t *p, int n, FILE *out)
-{
-    const uint8_t *s = p;
-    char *msg;
-    int len = 0;
-    int input_len = n;
 
+#ifdef ENABLE_CLEAR_FLAG_TIMEOUT
+Timer sessionTimer;
+void* Timer::authSecret_ptr = nullptr;
+#endif
 
-    msg = (char*) malloc ( (pf ? strlen(pf) : 0) + input_len * 3 + 1);
-    if(!msg) {
-        errno = ENOMEM;
-        return;
-    }
-
-    if (pf) {
-        len += sprintf(msg , "%s" , pf);
-    }
-    while (input_len--) {
-        len += sprintf(msg + len, "%02X" , *s++);
-        if (input_len && sep) {
-            len += sprintf(msg + len, ":");
-        }
-    }
-    sprintf(msg + len, "\n");
-    ALOGD("SecureElement:%s ==> size = %d data = %s", __func__, n, msg);
-
-    if(msg) free(msg);
-}
 
 bool AuthSecret::constructApduMessage(uint8_t ins, const std::vector<uint8_t>& inputData, std::vector<uint8_t>& apduOut) {
 
@@ -88,6 +71,43 @@ bool AuthSecret::constructApduMessage(uint8_t ins, const std::vector<uint8_t>& i
 }
 
 // Methods from ::android::hardware::authsecret::IAuthSecret follow.
+bool AuthSecret::clearFlag() {
+    bool ret = false;
+    char logmsg[500];
+
+    ALOGD(">>> %s", __func__);
+
+    std::vector<uint8_t> indata;
+    std::vector<uint8_t> apdu;
+    std::vector<uint8_t> response;
+
+    ret = constructApduMessage(INS_CLEAR_AUTH_SECRET, indata, apdu);
+    if (!ret) {
+        ALOGE("Error during APDU construction ret = %d", static_cast<int>(ret));
+        return false;
+    }
+
+    ALOGD("mTransport->sendData(...)", __func__);
+    ret = mTransport->sendData(apdu, response);
+    if (!ret) {
+        ALOGE("Error in sending data in sendData. ret = %d", static_cast<int>(ret));
+        return false;
+    }
+
+    // Response size should be greater than 2. Cbor output data followed by two bytes of APDU
+    // status.
+    if (response.size() < 2){
+        ALOGE("Response of the sendData is wrong: response size = %d",response.size());
+        return false;
+    } else if (getApduStatus(response) != APDU_RESP_STATUS_OK) {
+        ALOGE("Response of the sendData is wrong: apdu status = %ld",getApduStatus(response));
+        return false;
+    }
+
+    return true;
+}
+
+// Methods from ::android::hardware::authsecret::IAuthSecret follow.
 ::ndk::ScopedAStatus AuthSecret::setPrimaryUserCredential(const std::vector<uint8_t>& in_secret) {
     (void)in_secret;
     uint8_t *buffer;
@@ -100,11 +120,11 @@ bool AuthSecret::constructApduMessage(uint8_t ins, const std::vector<uint8_t>& i
 
     memcpy(buffer, in_secret.data(), in_secret.size());
 
-    ret = mTransport->openConnection();
-    if (!ret) {
-        ALOGE("Error openning connection ret = %d", static_cast<int>(ret));
-        return ndk::ScopedAStatus::ok();
-    }
+#ifdef ENABLE_CLEAR_FLAG_TIMEOUT
+    // Stop the timer
+    ALOGD("Stop clear timeout if any.");
+    sessionTimer.stop();
+#endif
 
     std::vector<uint8_t> apdu;
     std::vector<uint8_t> response;
@@ -126,13 +146,16 @@ bool AuthSecret::constructApduMessage(uint8_t ins, const std::vector<uint8_t>& i
     // status.
     if (response.size() < 2){
         ALOGE("Response of the sendData is wrong: response size = %d",response.size());
-        return ndk::ScopedAStatus::fromExceptionCodeWithMessage(EX_SERVICE_SPECIFIC, "Response of the sendData is wrong. Less than 2 bytes.");
+        return ndk::ScopedAStatus::ok();
     } else if (getApduStatus(response) != APDU_RESP_STATUS_OK) {
         ALOGE("Response of the sendData is wrong: apdu status = %ld",getApduStatus(response));
-        sprintf(logmsg, "Response of the sendData is wrong: apdu status = %ld",getApduStatus(response));
-        auto ret = ndk::ScopedAStatus::fromExceptionCodeWithMessage(EX_SERVICE_SPECIFIC, logmsg);
         return ndk::ScopedAStatus::ok();
     }
+
+#ifdef ENABLE_CLEAR_FLAG_TIMEOUT
+    ALOGD("Start timeout before clearing Flag ")
+    sessionTimer.start(SESSION_TIMEOUT_5M, this);
+#endif
 
     return ndk::ScopedAStatus::ok();
 }

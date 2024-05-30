@@ -46,6 +46,7 @@ cc_binary {
         "-Wno-unused-private-field",
         "-Wno-error",
         "-Wreturn-type",
+        "-DENABLE_CLEAR_FLAG_TIMEOUT"
     ],
 }
 
